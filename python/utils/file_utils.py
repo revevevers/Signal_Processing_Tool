@@ -10,54 +10,105 @@ class FileUtils:
     """
     
     @staticmethod
-    def read_txt_file(file_path: str) -> Tuple[np.ndarray, float]:
+    def read_txt_file(file_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        读取TXT文件，提取信号数据和采样率
+        读取TXT文件，提取时间序列和信号数据
         
         Args:
             file_path: TXT文件路径
             
         Returns:
-            Tuple[np.ndarray, float]: 信号数据和采样率
+            Tuple[np.ndarray, np.ndarray, float]: 时间序列、信号数据和采样率
         """
         try:
-            # 读取文件内容
+            # 读取文件内容，首先尝试检测是否为简单的数值序列
             with open(file_path, 'r') as f:
                 lines = f.readlines()
             
-            # 提取采样率（假设在第一行）
-            sampling_rate = 1000000.0  # 默认值
-            for line in lines[:10]:  # 只检查前10行
-                if 'sampling rate' in line.lower() or 'fs' in line.lower():
-                    # 尝试提取数字
-                    parts = line.split(':')
-                    if len(parts) > 1:
+            # 尝试解析第一行以确定格式
+            first_line = lines[0].strip()
+            
+            # 检查是否为简单的单列数值格式（如示例文件）
+            try:
+                float(first_line)
+                is_simple_format = True
+            except ValueError:
+                is_simple_format = False
+            
+            if is_simple_format:
+                # 简单格式：每行一个数值
+                signal_data = []
+                for line in lines:
+                    line = line.strip()
+                    if line:
                         try:
-                            sampling_rate = float(parts[1].strip())
+                            value = float(line)
+                            signal_data.append(value)
                         except ValueError:
-                            pass
-            
-            # 提取信号数据（假设数据从某一行开始，每行一个数值）
-            data = []
-            data_started = False
-            
-            for line in lines:
-                line = line.strip()
-                # 跳过空行和注释行
-                if not line or line.startswith('#'):
-                    continue
+                            continue
                 
-                # 尝试将行转换为浮点数
-                try:
-                    value = float(line)
-                    data.append(value)
-                    data_started = True
-                except ValueError:
-                    # 如果已经开始读取数据，但当前行不是数字，则停止读取
-                    if data_started:
-                        break
+                signal_array = np.array(signal_data)
+                # 创建默认时间轴（假设采样率为1MHz）
+                sampling_rate = 1000000.0
+                time_array = np.arange(len(signal_array)) / sampling_rate
+                
+                return time_array, signal_array, sampling_rate
             
-            return np.array(data), sampling_rate
+            else:
+                # 复杂格式：包含时间和信号两列
+                # 跳过头部信息，找到数据开始位置
+                data_start_line = 0
+                for i, line in enumerate(lines):
+                    # 查找包含时间和信号列标题的行
+                    if 'Time' in line and 'Signal' in line:
+                        data_start_line = i + 1
+                        break
+                    # 或者查找包含单位信息的行
+                    elif '[ s ]' in line and '[ m/s ]' in line:
+                        data_start_line = i + 1
+                        break
+                
+                # 提取时间和信号数据
+                time_data = []
+                signal_data = []
+                
+                for line in lines[data_start_line:]:
+                    line = line.strip()
+                    # 跳过空行
+                    if not line:
+                        continue
+                    
+                    # 尝试解析时间和信号数据
+                    try:
+                        parts = line.split('\t')  # 使用制表符分割
+                        if len(parts) >= 2:
+                            time_val = float(parts[0])
+                            signal_val = float(parts[1])
+                            time_data.append(time_val)
+                            signal_data.append(signal_val)
+                        else:
+                            # 如果制表符分割失败，尝试空格分割
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                time_val = float(parts[0])
+                                signal_val = float(parts[1])
+                                time_data.append(time_val)
+                                signal_data.append(signal_val)
+                    except (ValueError, IndexError):
+                        # 如果解析失败，跳过这一行
+                        continue
+                
+                time_array = np.array(time_data)
+                signal_array = np.array(signal_data)
+                
+                # 计算采样率
+                if len(time_array) > 1:
+                    dt = time_array[1] - time_array[0]
+                    sampling_rate = 1.0 / dt
+                else:
+                    sampling_rate = 1000000.0  # 默认值
+                
+                return time_array, signal_array, sampling_rate
         
         except Exception as e:
             raise Exception(f"读取TXT文件失败: {str(e)}")

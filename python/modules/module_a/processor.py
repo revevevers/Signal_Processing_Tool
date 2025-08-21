@@ -25,8 +25,6 @@ class SinglePointProcessor:
         self.sampling_rate = None  # 采样率
         self.time_axis = None  # 时间轴
         self.file_path = None  # 文件路径
-        self.signal_utils = SignalUtils()  # 信号处理工具
-        self.file_utils = FileUtils()  # 文件处理工具
         
     def load_from_file(self, file_path: str) -> bool:
         """
@@ -41,14 +39,14 @@ class SinglePointProcessor:
         try:
             self.file_path = file_path
             # 使用FileUtils加载TXT文件
-            signal_data, sampling_rate = self.file_utils.read_txt_file(file_path)
+            time_data, signal_data, sampling_rate = FileUtils.read_txt_file(file_path)
             
             if signal_data is not None and sampling_rate is not None:
                 self.signal_data = signal_data
                 self.processed_data = signal_data.copy()  # 初始化处理后的数据为原始数据
                 self.sampling_rate = sampling_rate
-                # 创建时间轴
-                self.time_axis = np.arange(len(self.signal_data)) / self.sampling_rate
+                # 使用从文件读取的时间轴
+                self.time_axis = time_data if len(time_data) == len(self.signal_data) else np.arange(len(self.signal_data)) / self.sampling_rate
                 return True
             else:
                 print(f"无法从文件 {file_path} 加载有效的信号数据")
@@ -197,7 +195,7 @@ class SinglePointProcessor:
                 }
                 
                 # 使用FileUtils保存到MAT文件
-                self.file_utils.save_to_mat(output_path, data_dict)
+                FileUtils.save_to_mat(output_path, **data_dict)
                 return True
             except Exception as e:
                 print(f"保存到MAT文件 {output_path} 时出错: {str(e)}")
@@ -219,7 +217,7 @@ class SinglePointProcessor:
         try:
             self.file_path = file_path
             # 使用FileUtils加载MAT文件
-            data_dict = self.file_utils.load_from_mat(file_path)
+            data_dict = FileUtils.read_mat_file(file_path)
             
             if data_dict is not None and 'signal' in data_dict and 'fs' in data_dict:
                 self.signal_data = data_dict.get('original_signal', data_dict['signal'])

@@ -1,576 +1,350 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+import plotly.express as px
 from plotly.subplots import make_subplots
+try:
+    import streamlit as st
+except ImportError:
+    st = None
 from typing import Tuple, List, Dict, Any, Optional, Union
-import os
-import sys
-
-# 添加项目根目录到系统路径
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 class SinglePointVisualizer:
     """
-    单点信号可视化器，用于可视化单点信号数据
+    单点信号可视化器，用于创建各种信号显示图表
     """
     
     def __init__(self):
         """
-        初始化单点信号可视化器
+        初始化可视化器
         """
-        self.fig_size = (10, 6)  # 默认图形大小
-        self.dpi = 100  # 默认DPI
-        self.cmap = 'viridis'  # 默认颜色映射
-        
-    def plot_signal(self, time: np.ndarray, signal: np.ndarray, title: str = "信号波形", 
-                    xlabel: str = "时间 (s)", ylabel: str = "幅值", 
-                    fig_size: Tuple[int, int] = None, show: bool = True) -> plt.Figure:
+        pass
+    
+    @staticmethod
+    def plot_time_domain(time_axis: np.ndarray, signal: np.ndarray, 
+                        title: str = "时域信号", 
+                        xlabel: str = "时间 (s)", 
+                        ylabel: str = "幅值",
+                        use_plotly: bool = True) -> Any:
         """
-        绘制信号波形
+        绘制时域信号
         
         Args:
-            time: 时间轴
+            time_axis: 时间轴
             signal: 信号数据
             title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            fig_size: 图形大小
-            show: 是否显示图形
+            xlabel: X轴标签
+            ylabel: Y轴标签
+            use_plotly: 是否使用Plotly（用于交互式图表）
             
         Returns:
-            plt.Figure: Matplotlib图形对象
+            图表对象
         """
-        if fig_size is None:
-            fig_size = self.fig_size
+        if use_plotly:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=time_axis,
+                y=signal,
+                mode='lines',
+                name='信号',
+                line=dict(width=1)
+            ))
             
-        fig, ax = plt.subplots(figsize=fig_size, dpi=self.dpi)
-        ax.plot(time, signal)
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-        
-        if show:
-            plt.tight_layout()
-            plt.show()
+            fig.update_layout(
+                title=title,
+                xaxis_title=xlabel,
+                yaxis_title=ylabel,
+                hovermode='x unified',
+                showlegend=False
+            )
             
-        return fig
+            return fig
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(time_axis, signal, linewidth=1)
+            ax.set_title(title)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.grid(True, alpha=0.3)
+            return fig
     
-    def plot_signal_interactive(self, time: np.ndarray, signal: np.ndarray, 
-                               title: str = "信号波形", 
-                               xlabel: str = "时间 (s)", 
-                               ylabel: str = "幅值") -> go.Figure:
+    @staticmethod
+    def plot_frequency_domain(frequencies: np.ndarray, magnitudes: np.ndarray,
+                             title: str = "频域信号",
+                             xlabel: str = "频率 (Hz)",
+                             ylabel: str = "幅值",
+                             use_plotly: bool = True) -> Any:
         """
-        绘制交互式信号波形
+        绘制频域信号
         
         Args:
-            time: 时间轴
-            signal: 信号数据
+            frequencies: 频率轴
+            magnitudes: 幅值数据
             title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
+            xlabel: X轴标签
+            ylabel: Y轴标签
+            use_plotly: 是否使用Plotly
             
         Returns:
-            go.Figure: Plotly图形对象
+            图表对象
         """
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=time,
-            y=signal,
-            mode='lines',
-            name='信号'
-        ))
-        
-        fig.update_layout(
-            title=title,
-            xaxis_title=xlabel,
-            yaxis_title=ylabel,
-            hovermode="closest",
-            height=500,
-        )
-        
-        return fig
+        if use_plotly:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=frequencies,
+                y=magnitudes,
+                mode='lines',
+                name='频谱',
+                line=dict(width=1)
+            ))
+            
+            fig.update_layout(
+                title=title,
+                xaxis_title=xlabel,
+                yaxis_title=ylabel,
+                hovermode='x unified',
+                showlegend=False
+            )
+            
+            return fig
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(frequencies, magnitudes, linewidth=1)
+            ax.set_title(title)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.grid(True, alpha=0.3)
+            return fig
     
-    def plot_fft(self, freq: np.ndarray, amplitude: np.ndarray, 
-                title: str = "频谱", xlabel: str = "频率 (Hz)", 
-                ylabel: str = "幅值", fig_size: Tuple[int, int] = None, 
-                show: bool = True) -> plt.Figure:
-        """
-        绘制频谱
-        
-        Args:
-            freq: 频率轴
-            amplitude: 幅值
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            fig_size: 图形大小
-            show: 是否显示图形
-            
-        Returns:
-            plt.Figure: Matplotlib图形对象
-        """
-        if fig_size is None:
-            fig_size = self.fig_size
-            
-        fig, ax = plt.subplots(figsize=fig_size, dpi=self.dpi)
-        ax.plot(freq, amplitude)
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-        
-        if show:
-            plt.tight_layout()
-            plt.show()
-            
-        return fig
-    
-    def plot_fft_interactive(self, freq: np.ndarray, amplitude: np.ndarray, 
-                           title: str = "频谱", 
-                           xlabel: str = "频率 (Hz)", 
-                           ylabel: str = "幅值") -> go.Figure:
-        """
-        绘制交互式频谱
-        
-        Args:
-            freq: 频率轴
-            amplitude: 幅值
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            
-        Returns:
-            go.Figure: Plotly图形对象
-        """
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=freq,
-            y=amplitude,
-            mode='lines',
-            name='频谱'
-        ))
-        
-        fig.update_layout(
-            title=title,
-            xaxis_title=xlabel,
-            yaxis_title=ylabel,
-            hovermode="closest",
-            height=500,
-        )
-        
-        return fig
-    
-    def plot_stft(self, f: np.ndarray, t: np.ndarray, Zxx: np.ndarray, 
-                 title: str = "短时傅里叶变换", 
-                 xlabel: str = "时间 (s)", 
-                 ylabel: str = "频率 (Hz)", 
-                 fig_size: Tuple[int, int] = None, 
-                 show: bool = True) -> plt.Figure:
-        """
-        绘制短时傅里叶变换
-        
-        Args:
-            f: 频率轴
-            t: 时间轴
-            Zxx: STFT结果
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            fig_size: 图形大小
-            show: 是否显示图形
-            
-        Returns:
-            plt.Figure: Matplotlib图形对象
-        """
-        if fig_size is None:
-            fig_size = self.fig_size
-            
-        fig, ax = plt.subplots(figsize=fig_size, dpi=self.dpi)
-        im = ax.pcolormesh(t, f, Zxx, shading='gouraud', cmap=self.cmap)
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        fig.colorbar(im, ax=ax, label='幅值')
-        
-        if show:
-            plt.tight_layout()
-            plt.show()
-            
-        return fig
-    
-    def plot_stft_interactive(self, f: np.ndarray, t: np.ndarray, Zxx: np.ndarray, 
-                            title: str = "短时傅里叶变换", 
-                            xlabel: str = "时间 (s)", 
-                            ylabel: str = "频率 (Hz)") -> go.Figure:
-        """
-        绘制交互式短时傅里叶变换
-        
-        Args:
-            f: 频率轴
-            t: 时间轴
-            Zxx: STFT结果
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            
-        Returns:
-            go.Figure: Plotly图形对象
-        """
-        fig = go.Figure(data=go.Heatmap(
-            z=Zxx,
-            x=t,
-            y=f,
-            colorscale='Viridis',
-            colorbar=dict(title='幅值')
-        ))
-        
-        fig.update_layout(
-            title=title,
-            xaxis_title=xlabel,
-            yaxis_title=ylabel,
-            height=600,
-        )
-        
-        return fig
-    
-    def plot_signal_with_envelope(self, time: np.ndarray, signal: np.ndarray, 
-                                 envelope: np.ndarray, 
-                                 title: str = "信号与包络", 
-                                 xlabel: str = "时间 (s)", 
-                                 ylabel: str = "幅值", 
-                                 fig_size: Tuple[int, int] = None, 
-                                 show: bool = True) -> plt.Figure:
-        """
-        绘制信号与包络
-        
-        Args:
-            time: 时间轴
-            signal: 信号数据
-            envelope: 包络数据
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            fig_size: 图形大小
-            show: 是否显示图形
-            
-        Returns:
-            plt.Figure: Matplotlib图形对象
-        """
-        if fig_size is None:
-            fig_size = self.fig_size
-            
-        fig, ax = plt.subplots(figsize=fig_size, dpi=self.dpi)
-        ax.plot(time, signal, label='信号')
-        ax.plot(time, envelope, 'r-', label='包络')
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-        ax.legend()
-        
-        if show:
-            plt.tight_layout()
-            plt.show()
-            
-        return fig
-    
-    def plot_signal_with_envelope_interactive(self, time: np.ndarray, signal: np.ndarray, 
-                                            envelope: np.ndarray, 
-                                            title: str = "信号与包络", 
-                                            xlabel: str = "时间 (s)", 
-                                            ylabel: str = "幅值") -> go.Figure:
-        """
-        绘制交互式信号与包络
-        
-        Args:
-            time: 时间轴
-            signal: 信号数据
-            envelope: 包络数据
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            
-        Returns:
-            go.Figure: Plotly图形对象
-        """
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=time,
-            y=signal,
-            mode='lines',
-            name='信号'
-        ))
-        fig.add_trace(go.Scatter(
-            x=time,
-            y=envelope,
-            mode='lines',
-            name='包络',
-            line=dict(color='red')
-        ))
-        
-        fig.update_layout(
-            title=title,
-            xaxis_title=xlabel,
-            yaxis_title=ylabel,
-            hovermode="closest",
-            height=500,
-            legend=dict(x=0.02, y=0.98)
-        )
-        
-        return fig
-    
-    def plot_comparison(self, time: np.ndarray, original: np.ndarray, processed: np.ndarray, 
-                       title: str = "原始信号与处理后信号对比", 
-                       xlabel: str = "时间 (s)", 
-                       ylabel: str = "幅值", 
-                       fig_size: Tuple[int, int] = None, 
-                       show: bool = True) -> plt.Figure:
+    @staticmethod
+    def plot_comparison(time_axis: np.ndarray, 
+                       original_signal: np.ndarray, 
+                       processed_signal: np.ndarray,
+                       title: str = "信号对比",
+                       use_plotly: bool = True) -> Any:
         """
         绘制原始信号与处理后信号的对比图
         
         Args:
-            time: 时间轴
-            original: 原始信号
-            processed: 处理后的信号
+            time_axis: 时间轴
+            original_signal: 原始信号
+            processed_signal: 处理后信号
             title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
-            fig_size: 图形大小
-            show: 是否显示图形
+            use_plotly: 是否使用Plotly
             
         Returns:
-            plt.Figure: Matplotlib图形对象
+            图表对象
         """
-        if fig_size is None:
-            fig_size = self.fig_size
+        if use_plotly:
+            fig = go.Figure()
             
-        fig, ax = plt.subplots(figsize=fig_size, dpi=self.dpi)
-        ax.plot(time, original, 'b-', alpha=0.7, label='原始信号')
-        ax.plot(time, processed, 'r-', alpha=0.7, label='处理后信号')
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-        ax.legend()
-        
-        if show:
-            plt.tight_layout()
-            plt.show()
+            fig.add_trace(go.Scatter(
+                x=time_axis,
+                y=original_signal,
+                mode='lines',
+                name='原始信号',
+                line=dict(width=1, color='blue'),
+                opacity=0.7
+            ))
             
-        return fig
-    
-    def plot_comparison_interactive(self, time: np.ndarray, original: np.ndarray, processed: np.ndarray, 
-                                  title: str = "原始信号与处理后信号对比", 
-                                  xlabel: str = "时间 (s)", 
-                                  ylabel: str = "幅值") -> go.Figure:
-        """
-        绘制交互式原始信号与处理后信号的对比图
-        
-        Args:
-            time: 时间轴
-            original: 原始信号
-            processed: 处理后的信号
-            title: 图表标题
-            xlabel: x轴标签
-            ylabel: y轴标签
+            fig.add_trace(go.Scatter(
+                x=time_axis,
+                y=processed_signal,
+                mode='lines',
+                name='处理后信号',
+                line=dict(width=1, color='red')
+            ))
             
-        Returns:
-            go.Figure: Plotly图形对象
-        """
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=time,
-            y=original,
-            mode='lines',
-            name='原始信号',
-            line=dict(color='blue')
-        ))
-        fig.add_trace(go.Scatter(
-            x=time,
-            y=processed,
-            mode='lines',
-            name='处理后信号',
-            line=dict(color='red')
-        ))
-        
-        fig.update_layout(
-            title=title,
-            xaxis_title=xlabel,
-            yaxis_title=ylabel,
-            hovermode="closest",
-            height=500,
-            legend=dict(x=0.02, y=0.98)
-        )
-        
-        return fig
-    
-    def plot_multi_view(self, time: np.ndarray, signal: np.ndarray, 
-                       freq: np.ndarray, amplitude: np.ndarray, 
-                       f: np.ndarray = None, t: np.ndarray = None, Zxx: np.ndarray = None, 
-                       title: str = "多视图分析", 
-                       fig_size: Tuple[int, int] = None, 
-                       show: bool = True) -> plt.Figure:
-        """
-        绘制多视图分析（时域、频域、时频域）
-        
-        Args:
-            time: 时间轴
-            signal: 信号数据
-            freq: 频率轴
-            amplitude: 幅值
-            f: STFT频率轴
-            t: STFT时间轴
-            Zxx: STFT结果
-            title: 图表标题
-            fig_size: 图形大小
-            show: 是否显示图形
+            fig.update_layout(
+                title=title,
+                xaxis_title="时间 (s)",
+                yaxis_title="幅值",
+                hovermode='x unified',
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01
+                )
+            )
             
-        Returns:
-            plt.Figure: Matplotlib图形对象
-        """
-        if fig_size is None:
-            fig_size = (12, 10)
-            
-        if f is not None and t is not None and Zxx is not None:
-            # 三视图：时域、频域、时频域
-            fig, axs = plt.subplots(3, 1, figsize=fig_size, dpi=self.dpi)
-            
-            # 时域图
-            axs[0].plot(time, signal)
-            axs[0].set_title("时域信号")
-            axs[0].set_xlabel("时间 (s)")
-            axs[0].set_ylabel("幅值")
-            axs[0].grid(True)
-            
-            # 频域图
-            axs[1].plot(freq, amplitude)
-            axs[1].set_title("频谱")
-            axs[1].set_xlabel("频率 (Hz)")
-            axs[1].set_ylabel("幅值")
-            axs[1].grid(True)
-            
-            # 时频域图
-            im = axs[2].pcolormesh(t, f, Zxx, shading='gouraud', cmap=self.cmap)
-            axs[2].set_title("短时傅里叶变换")
-            axs[2].set_xlabel("时间 (s)")
-            axs[2].set_ylabel("频率 (Hz)")
-            fig.colorbar(im, ax=axs[2], label='幅值')
+            return fig
         else:
-            # 双视图：时域、频域
-            fig, axs = plt.subplots(2, 1, figsize=fig_size, dpi=self.dpi)
-            
-            # 时域图
-            axs[0].plot(time, signal)
-            axs[0].set_title("时域信号")
-            axs[0].set_xlabel("时间 (s)")
-            axs[0].set_ylabel("幅值")
-            axs[0].grid(True)
-            
-            # 频域图
-            axs[1].plot(freq, amplitude)
-            axs[1].set_title("频谱")
-            axs[1].set_xlabel("频率 (Hz)")
-            axs[1].set_ylabel("幅值")
-            axs[1].grid(True)
-        
-        fig.suptitle(title)
-        
-        if show:
-            plt.tight_layout()
-            plt.show()
-            
-        return fig
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(time_axis, original_signal, label='原始信号', alpha=0.7, linewidth=1)
+            ax.plot(time_axis, processed_signal, label='处理后信号', linewidth=1)
+            ax.set_title(title)
+            ax.set_xlabel("时间 (s)")
+            ax.set_ylabel("幅值")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            return fig
     
-    def plot_multi_view_interactive(self, time: np.ndarray, signal: np.ndarray, 
-                                  freq: np.ndarray, amplitude: np.ndarray, 
-                                  f: np.ndarray = None, t: np.ndarray = None, Zxx: np.ndarray = None, 
-                                  title: str = "多视图分析") -> go.Figure:
+    @staticmethod
+    def plot_stft(time_grid: np.ndarray, 
+                  frequency_grid: np.ndarray, 
+                  stft_magnitude: np.ndarray,
+                  title: str = "短时傅里叶变换",
+                  use_plotly: bool = True) -> Any:
         """
-        绘制交互式多视图分析（时域、频域、时频域）
+        绘制短时傅里叶变换（时频图）
         
         Args:
-            time: 时间轴
-            signal: 信号数据
-            freq: 频率轴
-            amplitude: 幅值
-            f: STFT频率轴
-            t: STFT时间轴
-            Zxx: STFT结果
+            time_grid: 时间网格
+            frequency_grid: 频率网格
+            stft_magnitude: STFT幅值
             title: 图表标题
+            use_plotly: 是否使用Plotly
             
         Returns:
-            go.Figure: Plotly图形对象
+            图表对象
         """
-        if f is not None and t is not None and Zxx is not None:
-            # 三视图：时域、频域、时频域
-            fig = make_subplots(rows=3, cols=1, 
-                              subplot_titles=("时域信号", "频谱", "短时傅里叶变换"),
-                              vertical_spacing=0.1)
-            
-            # 时域图
-            fig.add_trace(go.Scatter(
-                x=time,
-                y=signal,
-                mode='lines',
-                name='信号'
-            ), row=1, col=1)
-            
-            # 频域图
-            fig.add_trace(go.Scatter(
-                x=freq,
-                y=amplitude,
-                mode='lines',
-                name='频谱'
-            ), row=2, col=1)
-            
-            # 时频域图
-            fig.add_trace(go.Heatmap(
-                z=Zxx,
-                x=t,
-                y=f,
+        if use_plotly:
+            fig = go.Figure(data=go.Heatmap(
+                x=time_grid,
+                y=frequency_grid,
+                z=20 * np.log10(stft_magnitude + 1e-10),  # 转换为dB
                 colorscale='Viridis',
-                colorbar=dict(title='幅值', len=0.3, y=0.15),
-                name='STFT'
-            ), row=3, col=1)
-        else:
-            # 双视图：时域、频域
-            fig = make_subplots(rows=2, cols=1, 
-                              subplot_titles=("时域信号", "频谱"),
-                              vertical_spacing=0.1)
+                colorbar=dict(title="幅值 (dB)")
+            ))
             
-            # 时域图
+            fig.update_layout(
+                title=title,
+                xaxis_title="时间 (s)",
+                yaxis_title="频率 (Hz)"
+            )
+            
+            return fig
+        else:
+            fig, ax = plt.subplots(figsize=(12, 8))
+            im = ax.pcolormesh(time_grid, frequency_grid, 
+                              20 * np.log10(stft_magnitude + 1e-10), 
+                              shading='gouraud', cmap='viridis')
+            ax.set_title(title)
+            ax.set_xlabel("时间 (s)")
+            ax.set_ylabel("频率 (Hz)")
+            plt.colorbar(im, ax=ax, label="幅值 (dB)")
+            return fig
+    
+    @staticmethod
+    def plot_envelope(time_axis: np.ndarray, 
+                     signal: np.ndarray, 
+                     envelope: np.ndarray,
+                     title: str = "信号包络",
+                     use_plotly: bool = True) -> Any:
+        """
+        绘制信号及其包络
+        
+        Args:
+            time_axis: 时间轴
+            signal: 原始信号
+            envelope: 信号包络
+            title: 图表标题
+            use_plotly: 是否使用Plotly
+            
+        Returns:
+            图表对象
+        """
+        if use_plotly:
+            fig = go.Figure()
+            
             fig.add_trace(go.Scatter(
-                x=time,
+                x=time_axis,
                 y=signal,
                 mode='lines',
-                name='信号'
-            ), row=1, col=1)
+                name='信号',
+                line=dict(width=1, color='lightblue'),
+                opacity=0.6
+            ))
             
-            # 频域图
             fig.add_trace(go.Scatter(
-                x=freq,
-                y=amplitude,
+                x=time_axis,
+                y=envelope,
                 mode='lines',
-                name='频谱'
-            ), row=2, col=1)
+                name='包络',
+                line=dict(width=2, color='red')
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=time_axis,
+                y=-envelope,
+                mode='lines',
+                name='负包络',
+                line=dict(width=2, color='red'),
+                showlegend=False
+            ))
+            
+            fig.update_layout(
+                title=title,
+                xaxis_title="时间 (s)",
+                yaxis_title="幅值",
+                hovermode='x unified',
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01
+                )
+            )
+            
+            return fig
+        else:
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(time_axis, signal, label='信号', alpha=0.6, linewidth=1)
+            ax.plot(time_axis, envelope, label='包络', linewidth=2, color='red')
+            ax.plot(time_axis, -envelope, linewidth=2, color='red')
+            ax.set_title(title)
+            ax.set_xlabel("时间 (s)")
+            ax.set_ylabel("幅值")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            return fig
+    
+    @staticmethod
+    def create_dashboard(processor, use_plotly: bool = True) -> Dict[str, Any]:
+        """
+        创建信号处理仪表板
         
-        fig.update_layout(
-            title=title,
-            height=800,
-            showlegend=True
-        )
+        Args:
+            processor: 单点信号处理器实例
+            use_plotly: 是否使用Plotly
+            
+        Returns:
+            包含所有图表的字典
+        """
+        plots = {}
         
-        # 更新x轴标签
-        fig.update_xaxes(title_text="时间 (s)", row=1, col=1)
-        fig.update_xaxes(title_text="频率 (Hz)", row=2, col=1)
-        if f is not None and t is not None and Zxx is not None:
-            fig.update_xaxes(title_text="时间 (s)", row=3, col=1)
+        if processor.signal_data is not None:
+            # 时域信号对比
+            plots['comparison'] = SinglePointVisualizer.plot_comparison(
+                processor.time_axis,
+                processor.signal_data,
+                processor.processed_data,
+                use_plotly=use_plotly
+            )
+            
+            # 频域分析
+            freqs, magnitudes = processor.compute_fft()
+            if freqs is not None and magnitudes is not None:
+                plots['frequency'] = SinglePointVisualizer.plot_frequency_domain(
+                    freqs, magnitudes, use_plotly=use_plotly
+                )
+            
+            # 信号包络
+            envelope = processor.compute_envelope()
+            if envelope is not None:
+                plots['envelope'] = SinglePointVisualizer.plot_envelope(
+                    processor.time_axis,
+                    processor.processed_data,
+                    envelope,
+                    use_plotly=use_plotly
+                )
+            
+            # 短时傅里叶变换
+            f, t, Zxx = processor.compute_stft()
+            if f is not None and t is not None and Zxx is not None:
+                plots['stft'] = SinglePointVisualizer.plot_stft(
+                    t, f, Zxx, use_plotly=use_plotly
+                )
         
-        # 更新y轴标签
-        fig.update_yaxes(title_text="幅值", row=1, col=1)
-        fig.update_yaxes(title_text="幅值", row=2, col=1)
-        if f is not None and t is not None and Zxx is not None:
-            fig.update_yaxes(title_text="频率 (Hz)", row=3, col=1)
-        
-        return fig
+        return plots
