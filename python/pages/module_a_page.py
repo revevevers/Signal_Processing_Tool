@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 import sys
+import tempfile
 from io import StringIO
 
 # 添加项目根目录到系统路径
@@ -36,14 +37,20 @@ def module_a_page():
         )
         
         if uploaded_file is not None:
-            # 保存上传的文件到临时位置
-            temp_path = f"/tmp/{uploaded_file.name}"
-            with open(temp_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+            # 使用系统临时目录创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{uploaded_file.name}") as temp_file:
+                temp_file.write(uploaded_file.getbuffer())
+                temp_path = temp_file.name
             
             # 加载文件
             if processor.load_from_file(temp_path):
                 st.success(f"✅ 文件加载成功：{uploaded_file.name}")
+                
+                # 清理临时文件
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
                 
                 # 显示文件信息
                 st.subheader("📋 文件信息")
@@ -53,17 +60,26 @@ def module_a_page():
                 st.write(f"**持续时间：** {len(processor.signal_data)/processor.sampling_rate:.4f} 秒")
             else:
                 st.error("❌ 文件加载失败，请检查文件格式")
+                # 清理临时文件
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
         
         # 示例数据按钮
         st.markdown("---")
         if st.button("📁 加载示例数据"):
-            example_path = "/Users/zyt/Documents/Signal_Processing_Tool/python/data/single_point/sine_wave.txt"
+            # 使用相对路径找到示例数据文件
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            example_path = os.path.join(current_dir, "..", "data", "single_point", "sine_wave.txt")
+            example_path = os.path.normpath(example_path)
+            
             if os.path.exists(example_path):
                 if processor.load_from_file(example_path):
                     st.success("✅ 示例数据加载成功")
                     st.rerun()
             else:
-                st.error("❌ 示例数据文件不存在")
+                st.error(f"❌ 示例数据文件不存在: {example_path}")
     
     # 主内容区域
     if processor.signal_data is not None:
@@ -294,7 +310,10 @@ def module_a_page():
         
         with col_export1:
             if st.button("📄 导出为MAT文件", use_container_width=True):
-                output_path = "/tmp/processed_signal.mat"
+                # 使用临时文件
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mat") as temp_file:
+                    output_path = temp_file.name
+                
                 if processor.save_to_mat(output_path):
                     with open(output_path, "rb") as file:
                         st.download_button(
