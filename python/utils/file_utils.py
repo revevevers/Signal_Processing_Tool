@@ -10,9 +10,9 @@ class FileUtils:
     """
     
     @staticmethod
-    def read_txt_file(file_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
+    def read_txt_signal(file_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        读取TXT文件，提取时间序列和信号数据
+        读取TXT文件，提取时间序列和信号数据（专用于B扫描格式）
         
         Args:
             file_path: TXT文件路径
@@ -21,94 +21,45 @@ class FileUtils:
             Tuple[np.ndarray, np.ndarray, float]: 时间序列、信号数据和采样率
         """
         try:
-            # 读取文件内容，首先尝试检测是否为简单的数值序列
             with open(file_path, 'r') as f:
                 lines = f.readlines()
             
-            # 尝试解析第一行以确定格式
-            first_line = lines[0].strip()
+            # 处理B扫描数据格式：跳过前5行头部信息
+            data_start_line = 5
             
-            # 检查是否为简单的单列数值格式（如示例文件）
-            try:
-                float(first_line)
-                is_simple_format = True
-            except ValueError:
-                is_simple_format = False
+            # 提取时间和信号数据
+            time_data = []
+            signal_data = []
             
-            if is_simple_format:
-                # 简单格式：每行一个数值
-                signal_data = []
-                for line in lines:
-                    line = line.strip()
-                    if line:
-                        try:
-                            value = float(line)
-                            signal_data.append(value)
-                        except ValueError:
-                            continue
+            for line in lines[data_start_line:]:
+                line = line.strip()
+                # 跳过空行
+                if not line:
+                    continue
                 
-                signal_array = np.array(signal_data)
-                # 创建默认时间轴（假设采样率为1MHz）
-                sampling_rate = 1000000.0
-                time_array = np.arange(len(signal_array)) / sampling_rate
-                
-                return time_array, signal_array, sampling_rate
+                # 解析时间和信号数据（制表符分割）
+                try:
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        time_val = float(parts[0])
+                        signal_val = float(parts[1])
+                        time_data.append(time_val)
+                        signal_data.append(signal_val)
+                except (ValueError, IndexError):
+                    # 如果解析失败，跳过这一行
+                    continue
             
+            time_array = np.array(time_data)
+            signal_array = np.array(signal_data)
+            
+            # 计算采样率
+            if len(time_array) > 1:
+                dt = time_array[1] - time_array[0]
+                sampling_rate = 1.0 / dt
             else:
-                # 复杂格式：包含时间和信号两列
-                # 跳过头部信息，找到数据开始位置
-                data_start_line = 0
-                for i, line in enumerate(lines):
-                    # 查找包含时间和信号列标题的行
-                    if 'Time' in line and 'Signal' in line:
-                        data_start_line = i + 1
-                        break
-                    # 或者查找包含单位信息的行
-                    elif '[ s ]' in line and '[ m/s ]' in line:
-                        data_start_line = i + 1
-                        break
-                
-                # 提取时间和信号数据
-                time_data = []
-                signal_data = []
-                
-                for line in lines[data_start_line:]:
-                    line = line.strip()
-                    # 跳过空行
-                    if not line:
-                        continue
-                    
-                    # 尝试解析时间和信号数据
-                    try:
-                        parts = line.split('\t')  # 使用制表符分割
-                        if len(parts) >= 2:
-                            time_val = float(parts[0])
-                            signal_val = float(parts[1])
-                            time_data.append(time_val)
-                            signal_data.append(signal_val)
-                        else:
-                            # 如果制表符分割失败，尝试空格分割
-                            parts = line.split()
-                            if len(parts) >= 2:
-                                time_val = float(parts[0])
-                                signal_val = float(parts[1])
-                                time_data.append(time_val)
-                                signal_data.append(signal_val)
-                    except (ValueError, IndexError):
-                        # 如果解析失败，跳过这一行
-                        continue
-                
-                time_array = np.array(time_data)
-                signal_array = np.array(signal_data)
-                
-                # 计算采样率
-                if len(time_array) > 1:
-                    dt = time_array[1] - time_array[0]
-                    sampling_rate = 1.0 / dt
-                else:
-                    sampling_rate = 1000000.0  # 默认值
-                
-                return time_array, signal_array, sampling_rate
+                sampling_rate = 1000000.0  # 默认值
+            
+            return time_array, signal_array, sampling_rate
         
         except Exception as e:
             raise Exception(f"读取TXT文件失败: {str(e)}")
@@ -126,6 +77,30 @@ class FileUtils:
             sio.savemat(file_path, kwargs)
         except Exception as e:
             raise Exception(f"保存MAT文件失败: {str(e)}")
+    
+    @staticmethod
+    def save_bscan_to_mat(file_path: str, data_xyt: np.ndarray, data_time: np.ndarray) -> None:
+        """
+        保存B扫描数据到MAT文件
+        
+        Args:
+            file_path: 保存路径
+            data_xyt: B扫描数据矩阵，形状为 (位置数, 时间点数)
+            data_time: 时间轴数据
+        """
+        try:
+            # 确保时间轴数据是一维数组
+            if data_time.ndim > 1:
+                data_time = data_time.flatten()
+            
+            # 使用MATLAB兼容的格式保存
+            data_dict = {
+                'data_xyt': np.asarray(data_xyt, dtype=np.float64),
+                'data_time': np.asarray(data_time, dtype=np.float64).reshape(1, -1)  # MATLAB默认行向量
+            }
+            sio.savemat(file_path, data_dict)
+        except Exception as e:
+            raise Exception(f"保存B扫描MAT文件失败: {str(e)}")
     
     @staticmethod
     def read_mat_file(file_path: str) -> Dict[str, Any]:

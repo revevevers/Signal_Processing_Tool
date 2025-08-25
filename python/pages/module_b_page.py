@@ -1,323 +1,409 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import os
 import sys
-import scipy.io as sio
-from typing import Tuple, List, Dict, Any, Optional, Union
-import plotly.graph_objects as go
-from glob import glob
+from io import StringIO
 
 # 添加项目根目录到系统路径
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-# 导入模块
-from modules.module_b import BScanProcessor, BScanVisualizer
-from utils.file_utils import FileUtils
+from modules.module_b.processor import BScanProcessor
+from modules.module_b.visualizer import BScanVisualizer
 
-def app():
+def module_b_page():
     """
-    B扫描信号处理页面
+    模块B页面：B扫描信号处理
     """
-    st.title("B扫描信号处理")
+    st.title("📊 B扫描信号处理")
+    st.markdown("---")
     
-    # 初始化处理器和可视化器
-    processor = BScanProcessor()
-    visualizer = BScanVisualizer()
+    # 初始化session state
+    if 'processor_b' not in st.session_state:
+        st.session_state.processor_b = BScanProcessor()
     
-    # 创建侧边栏
+    if 'visualizer_b' not in st.session_state:
+        st.session_state.visualizer_b = BScanVisualizer()
+    
+    processor = st.session_state.processor_b
+    visualizer = st.session_state.visualizer_b
+    
+    # 侧边栏 - 文件加载和基本信息
     with st.sidebar:
-        st.header("参数设置")
+        st.header("📁 数据加载")
         
-        # 数据加载选项
-        st.subheader("数据加载")
-        data_source = st.radio("数据来源", ["文件夹", "MAT文件"])
+        # 文件夹选择
+        folder_path = st.text_input(
+            "输入数据文件夹路径",
+            value="/Users/zyt/Documents/Signal_Processing_Tool/python/data/bscan/txt_files",
+            help="包含TXT信号文件的文件夹路径"
+        )
         
-        if data_source == "文件夹":
-            folder_path = st.text_input("信号文件夹路径")
-            file_pattern = st.text_input("文件名模式", "*.txt")
-            position_from_filename = st.checkbox("从文件名提取位置信息", True)
-            if position_from_filename:
-                position_pattern = st.text_input("位置提取模式", "pos_(\\d+)")
-        else:  # MAT文件
-            mat_file = st.file_uploader("上传B扫描MAT文件", type=["mat"])
+        file_pattern = st.text_input(
+            "文件名模式（可选）",
+            value="signal_*.txt",
+            help="例如：signal_*.txt 或 *.txt"
+        )
         
-        # 滤波器设置
-        st.subheader("滤波器设置")
-        filter_type = st.selectbox("滤波器类型", ["带通滤波", "低通滤波", "高通滤波", "中值滤波", "Savitzky-Golay滤波"])
+        if st.button("📂 加载文件夹数据", use_container_width=True):
+            if os.path.exists(folder_path):
+                if processor.load_from_folder(folder_path, file_pattern):
+                    st.success(f"✅ 成功加载 {len(processor.signals)} 个信号文件")
+                    
+                    # 显示文件夹信息
+                    st.subheader("📋 文件夹信息")
+                    st.write(f"**文件夹：** {folder_path}")
+                    st.write(f"**信号数量：** {len(processor.signals)} 个")
+                    st.write(f"**采样率：** {processor.sampling_rate:.0f} Hz")
+                    st.write(f"**位置范围：** {min(processor.positions):.1f} - {max(processor.positions):.1f}")
+                else:
+                    st.error("❌ 文件夹数据加载失败")
+            else:
+                st.error("❌ 文件夹路径不存在")
         
-        if filter_type in ["带通滤波", "低通滤波", "高通滤波"]:
-            order = st.slider("滤波器阶数", 1, 10, 4)
-            if filter_type == "带通滤波":
-                low_freq = st.number_input("低截止频率 (Hz)", 0.0, 1000000.0, 10000.0, step=1000.0)
-                high_freq = st.number_input("高截止频率 (Hz)", 0.0, 1000000.0, 100000.0, step=1000.0)
-            elif filter_type == "低通滤波":
-                cutoff_freq = st.number_input("截止频率 (Hz)", 0.0, 1000000.0, 100000.0, step=1000.0)
-            elif filter_type == "高通滤波":
-                cutoff_freq = st.number_input("截止频率 (Hz)", 0.0, 1000000.0, 10000.0, step=1000.0)
-        elif filter_type == "中值滤波":
-            window_size = st.slider("窗口大小", 3, 51, 5, step=2)
-        elif filter_type == "Savitzky-Golay滤波":
-            window_size = st.slider("窗口大小", 5, 51, 11, step=2)
-            poly_order = st.slider("多项式阶数", 1, 5, 3)
+        # MAT文件加载
+        st.markdown("---")
+        uploaded_mat = st.file_uploader(
+            "或上传MAT文件",
+            type=['mat'],
+            help="包含B扫描数据的MAT文件"
+        )
         
-        # B扫描图像设置
-        st.subheader("B扫描图像设置")
-        normalize_bscan = st.checkbox("归一化B扫描", True)
-        use_envelope = st.checkbox("使用包络", True)
-        if use_envelope:
-            envelope_method = st.selectbox("包络计算方法", ["希尔伯特变换", "峰值检测"])
+        if uploaded_mat is not None:
+            temp_path = f"/tmp/{uploaded_mat.name}"
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_mat.getbuffer())
+            
+            if processor.load_from_mat(temp_path):
+                st.success(f"✅ MAT文件加载成功：{uploaded_mat.name}")
+                st.write(f"**数据形状：** {processor.bscan_data.shape}")
+            else:
+                st.error("❌ MAT文件加载失败")
         
-        # 可视化选项
-        st.subheader("可视化选项")
-        plot_type = st.selectbox("图表类型", [
-            "B扫描图像", 
-            "指定位置信号", 
-            "瀑布图", 
-            "3D B扫描图像", 
-            "指定时间点位置切片"
-        ])
-        use_plotly = st.checkbox("使用交互式图表", True)
-        
-        if plot_type == "指定位置信号":
-            position_index = st.slider("位置索引", 0, 100, 0, key="pos_slider")
-        elif plot_type == "指定时间点位置切片":
-            time_index = st.slider("时间索引", 0, 1000, 500, key="time_slider")
-        
-        # 保存选项
-        st.subheader("保存选项")
-        save_results = st.checkbox("保存处理结果", False)
-        if save_results:
-            save_path = st.text_input("保存路径", "processed_bscan.mat")
-        
-        # 处理按钮
-        process_button = st.button("处理B扫描数据")
+        # 示例数据按钮
+        st.markdown("---")
+        if st.button("📁 加载示例数据", use_container_width=True):
+            example_path = "/Users/zyt/Documents/Signal_Processing_Tool/python/data/bscan/bscan_data.mat"
+            if os.path.exists(example_path):
+                if processor.load_from_mat(example_path):
+                    st.success("✅ 示例数据加载成功")
+                else:
+                    st.error("❌ 示例数据加载失败")
+            else:
+                st.error("❌ 示例数据文件不存在")
     
     # 主内容区域
-    if (data_source == "文件夹" and folder_path) or (data_source == "MAT文件" and mat_file is not None):
-        # 处理B扫描数据
-        if process_button:
-            with st.spinner("正在处理B扫描数据..."):
-                # 加载数据
-                if data_source == "文件夹":
-                    st.write(f"从文件夹加载数据: {folder_path}")
-                    if position_from_filename:
-                        processor.load_from_folder(folder_path, file_pattern, position_pattern)
-                    else:
-                        processor.load_from_folder(folder_path, file_pattern)
-                else:  # MAT文件
-                    # 保存上传的文件到临时位置
-                    file_path = os.path.join(os.path.dirname(__file__), "..\\temp", mat_file.name)
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                    
-                    with open(file_path, "wb") as f:
-                        f.write(mat_file.getbuffer())
-                    
-                    st.write(f"从MAT文件加载数据: {mat_file.name}")
-                    processor.load_from_mat(file_path)
+    if processor.signals:
+        
+        # 滤波器控制面板
+        st.header("🔧 信号处理控制")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("带通滤波器")
+            enable_bandpass = st.checkbox("启用带通滤波", key="bandpass_enable")
+            if enable_bandpass:
+                low_freq = st.number_input(
+                    "低截止频率 (Hz)", 
+                    min_value=100.0, 
+                    max_value=1000000.0, 
+                    value=100000.0,
+                    step=1000.0,
+                    key="bandpass_low"
+                )
+                high_freq = st.number_input(
+                    "高截止频率 (Hz)", 
+                    min_value=100.0, 
+                    max_value=1000000.0, 
+                    value=500000.0,
+                    step=1000.0,
+                    key="bandpass_high"
+                )
+                bandpass_order = st.selectbox(
+                    "滤波器阶数", 
+                    [2, 4, 6, 8], 
+                    index=1,
+                    key="bandpass_order"
+                )
+        
+        with col2:
+            st.subheader("低通滤波器")
+            enable_lowpass = st.checkbox("启用低通滤波", key="lowpass_enable")
+            if enable_lowpass:
+                lowpass_freq = st.number_input(
+                    "截止频率 (Hz)", 
+                    min_value=100.0, 
+                    max_value=1000000.0, 
+                    value=300000.0,
+                    step=1000.0,
+                    key="lowpass_freq"
+                )
+                lowpass_order = st.selectbox(
+                    "滤波器阶数", 
+                    [2, 4, 6, 8], 
+                    index=1,
+                    key="lowpass_order"
+                )
+        
+        with col3:
+            st.subheader("高通滤波器")
+            enable_highpass = st.checkbox("启用高通滤波", key="highpass_enable")
+            if enable_highpass:
+                highpass_freq = st.number_input(
+                    "截止频率 (Hz)", 
+                    min_value=100.0, 
+                    max_value=1000000.0, 
+                    value=50000.0,
+                    step=1000.0,
+                    key="highpass_freq"
+                )
+                highpass_order = st.selectbox(
+                    "滤波器阶数", 
+                    [2, 4, 6, 8], 
+                    index=1,
+                    key="highpass_order"
+                )
+        
+        # 其他滤波器
+        st.markdown("---")
+        col4, col5, col6 = st.columns(3)
+        
+        with col4:
+            st.subheader("中值滤波器")
+            enable_median = st.checkbox("启用中值滤波", key="median_enable")
+            if enable_median:
+                median_kernel = st.selectbox(
+                    "核大小", 
+                    [3, 5, 7, 9, 11], 
+                    index=1,
+                    key="median_kernel"
+                )
+        
+        with col5:
+            st.subheader("Savitzky-Golay滤波器")
+            enable_savgol = st.checkbox("启用SG滤波", key="savgol_enable")
+            if enable_savgol:
+                savgol_window = st.selectbox(
+                    "窗口长度", 
+                    [11, 21, 31, 41, 51], 
+                    index=0,
+                    key="savgol_window"
+                )
+                savgol_order = st.selectbox(
+                    "多项式阶数", 
+                    [2, 3, 4, 5], 
+                    index=1,
+                    key="savgol_order"
+                )
+        
+        with col6:
+            st.subheader("信号处理")
+            enable_normalize = st.checkbox("归一化信号", key="normalize_enable")
+        
+        # 应用滤波器按钮
+        st.markdown("---")
+        col_apply, col_reset = st.columns([1, 1])
+        
+        with col_apply:
+            if st.button("🔄 应用滤波器", type="primary", use_container_width=True):
+                # 重置处理
+                processor.reset_processing()
                 
                 # 应用滤波器
-                if filter_type == "带通滤波":
-                    processor.apply_bandpass_filter(low_freq, high_freq, order)
-                elif filter_type == "低通滤波":
-                    processor.apply_lowpass_filter(cutoff_freq, order)
-                elif filter_type == "高通滤波":
-                    processor.apply_highpass_filter(cutoff_freq, order)
-                elif filter_type == "中值滤波":
-                    processor.apply_median_filter(window_size)
-                elif filter_type == "Savitzky-Golay滤波":
-                    processor.apply_savgol_filter(window_size, poly_order)
-                
-                # 创建B扫描图像
-                if use_envelope:
-                    envelope_method_str = "hilbert" if envelope_method == "希尔伯特变换" else "peak"
-                    processor.create_bscan_image(use_envelope=True, envelope_method=envelope_method_str, normalize=normalize_bscan)
+                try:
+                    if enable_bandpass and low_freq < high_freq:
+                        processor.apply_bandpass_filter(low_freq, high_freq, bandpass_order)
+                    
+                    if enable_lowpass:
+                        processor.apply_lowpass_filter(lowpass_freq, lowpass_order)
+                    
+                    if enable_highpass:
+                        processor.apply_highpass_filter(highpass_freq, highpass_order)
+                    
+                    if enable_median:
+                        processor.apply_median_filter(median_kernel)
+                    
+                    if enable_savgol:
+                        processor.apply_savgol_filter(savgol_window, savgol_order)
+                    
+                    if enable_normalize:
+                        processor.normalize_signals()
+                    
+                    st.success("✅ 滤波器应用成功")
+                    
+                except Exception as e:
+                    st.error(f"❌ 滤波器应用失败：{str(e)}")
+        
+        with col_reset:
+            if st.button("🔄 重置处理", use_container_width=True):
+                processor.reset_processing()
+                st.success("✅ 信号已重置为原始状态")
+        
+        # B扫描创建选项
+        st.markdown("---")
+        st.header("🖼️ B扫描创建")
+        
+        col_bscan1, col_bscan2 = st.columns(2)
+        
+        with col_bscan1:
+            bscan_normalize = st.checkbox("归一化B扫描", value=True, key="bscan_normalize")
+            bscan_envelope = st.checkbox("计算包络", value=False, key="bscan_envelope")
+        
+        with col_bscan2:
+            if bscan_envelope:
+                envelope_method = st.selectbox("包络计算方法", ["hilbert", "peak"], index=0, key="envelope_method")
+        
+        if st.button("📊 创建B扫描", type="primary", use_container_width=True):
+            try:
+                bscan_data = processor.create_bscan(bscan_normalize, bscan_envelope, envelope_method if bscan_envelope else 'hilbert')
+                if bscan_data is not None:
+                    st.success(f"✅ B扫描创建成功，形状：{bscan_data.shape}")
                 else:
-                    processor.create_bscan_image(use_envelope=False, normalize=normalize_bscan)
+                    st.error("❌ B扫描创建失败")
+            except Exception as e:
+                st.error(f"❌ B扫描创建失败：{str(e)}")
+        
+        # 可视化部分
+        if processor.bscan_data is not None:
+            st.markdown("---")
+            st.header("📈 B扫描可视化")
+            
+            # 创建标签页
+            tab1, tab2, tab3, tab4 = st.tabs(["B扫描图像", "3D B扫描", "瀑布图", "信号切片"])
+            
+            with tab1:
+                st.subheader("B扫描图像")
+                try:
+                    fig_bscan = visualizer.plot_bscan_interactive(
+                        processor.bscan_data,
+                        processor.time_axis,
+                        processor.positions,
+                        title="B扫描图像"
+                    )
+                    st.plotly_chart(fig_bscan, use_container_width=True)
+                except Exception as e:
+                    st.error(f"绘制B扫描图像时出错：{str(e)}")
+            
+            with tab2:
+                st.subheader("3D B扫描")
+                try:
+                    fig_3d = visualizer.plot_bscan_3d_interactive(
+                        processor.bscan_data,
+                        processor.time_axis,
+                        processor.positions,
+                        title="3D B扫描图像"
+                    )
+                    st.plotly_chart(fig_3d, use_container_width=True)
+                except Exception as e:
+                    st.error(f"绘制3D B扫描时出错：{str(e)}")
+            
+            with tab3:
+                st.subheader("瀑布图")
+                try:
+                    fig_waterfall = visualizer.plot_waterfall_interactive(
+                        processor.bscan_data,
+                        processor.time_axis,
+                        processor.positions,
+                        title="瀑布图"
+                    )
+                    st.plotly_chart(fig_waterfall, use_container_width=True)
+                except Exception as e:
+                    st.error(f"绘制瀑布图时出错：{str(e)}")
+            
+            with tab4:
+                st.subheader("信号切片分析")
                 
-                # 保存结果
-                if save_results:
-                    processor.save_to_mat(save_path)
-                    st.success(f"处理结果已保存到 {save_path}")
+                col_slice1, col_slice2 = st.columns(2)
                 
-                # 可视化结果
-                st.subheader("处理结果")
-                
-                if plot_type == "B扫描图像":
-                    if use_plotly:
-                        fig = visualizer.plot_bscan_interactive(
-                            processor.bscan_image, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title="B扫描图像"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = visualizer.plot_bscan(
-                            processor.bscan_image, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title="B扫描图像", 
-                            show=False
-                        )
-                        st.pyplot(fig)
-                
-                elif plot_type == "指定位置信号":
-                    # 确保位置索引在有效范围内
-                    max_pos_idx = processor.bscan_image.shape[0] - 1
-                    position_index = min(position_index, max_pos_idx)
+                with col_slice1:
+                    # 位置切片
+                    position_idx = st.slider(
+                        "选择位置索引", 
+                        0, len(processor.positions)-1, 
+                        len(processor.positions)//2,
+                        key="position_slice"
+                    )
+                    position = processor.positions[position_idx]
                     
-                    if use_plotly:
-                        fig = visualizer.plot_signal_at_position_interactive(
-                            processor.bscan_image, 
-                            position_index, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title=f"位置 {processor.position_axis[position_index]} 处的信号"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = visualizer.plot_signal_at_position(
-                            processor.bscan_image, 
-                            position_index, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title=f"位置 {processor.position_axis[position_index]} 处的信号", 
-                            show=False
-                        )
-                        st.pyplot(fig)
+                    if st.button("📈 查看位置切片", use_container_width=True):
+                        time_axis, signal = processor.get_signal_at_position(position_idx)
+                        if time_axis is not None and signal is not None:
+                            fig_position = visualizer.plot_signal_at_position_interactive(
+                                time_axis, signal, position,
+                                title=f"位置 {position} 处的信号"
+                            )
+                            st.plotly_chart(fig_position, use_container_width=True)
+                        else:
+                            st.warning("无法获取位置切片数据")
                 
-                elif plot_type == "瀑布图":
-                    if use_plotly:
-                        fig = visualizer.plot_waterfall_interactive(
-                            processor.bscan_image, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title="B扫描瀑布图"
+                with col_slice2:
+                    # 时间切片
+                    if processor.time_axis is not None:
+                        time_idx = st.slider(
+                            "选择时间索引", 
+                            0, len(processor.time_axis)-1, 
+                            len(processor.time_axis)//2,
+                            key="time_slice"
                         )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = visualizer.plot_waterfall(
-                            processor.bscan_image, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title="B扫描瀑布图", 
-                            show=False
-                        )
-                        st.pyplot(fig)
-                
-                elif plot_type == "3D B扫描图像":
-                    if use_plotly:
-                        fig = visualizer.plot_bscan_3d_interactive(
-                            processor.bscan_image, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title="3D B扫描图像"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = visualizer.plot_bscan_3d(
-                            processor.bscan_image, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title="3D B扫描图像", 
-                            show=False
-                        )
-                        st.pyplot(fig)
-                
-                elif plot_type == "指定时间点位置切片":
-                    # 确保时间索引在有效范围内
-                    max_time_idx = processor.bscan_image.shape[1] - 1
-                    time_index = min(time_index, max_time_idx)
-                    
-                    if use_plotly:
-                        fig = visualizer.plot_position_slice_at_time_interactive(
-                            processor.bscan_image, 
-                            time_index, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title=f"时间 {processor.time_axis[time_index]:.6f} s 的位置切片"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = visualizer.plot_position_slice_at_time(
-                            processor.bscan_image, 
-                            time_index, 
-                            processor.position_axis, 
-                            processor.time_axis, 
-                            title=f"时间 {processor.time_axis[time_index]:.6f} s 的位置切片", 
-                            show=False
-                        )
-                        st.pyplot(fig)
-                
-                # 显示B扫描参数
-                st.subheader("B扫描参数")
-                st.write(f"采样率: {processor.fs} Hz")
-                st.write(f"位置数量: {len(processor.position_axis)}")
-                st.write(f"每个信号的采样点数: {processor.bscan_image.shape[1]}")
-                st.write(f"信号持续时间: {processor.signal_duration:.6f} 秒")
-                
-                # 显示统计信息
-                st.subheader("B扫描统计信息")
-                stats_df = pd.DataFrame({
-                    "参数": ["最大值", "最小值", "均值", "标准差"],
-                    "值": [
-                        f"{np.max(processor.bscan_image):.6f}",
-                        f"{np.min(processor.bscan_image):.6f}",
-                        f"{np.mean(processor.bscan_image):.6f}",
-                        f"{np.std(processor.bscan_image):.6f}"
-                    ]
-                })
-                st.table(stats_df)
+                        time_val = processor.time_axis[time_idx]
+                        
+                        if st.button("📈 查看时间切片", use_container_width=True):
+                            positions, signal = processor.get_signal_at_time(time_idx)
+                            if positions is not None and signal is not None:
+                                fig_time = visualizer.plot_signal_at_time_interactive(
+                                    positions, signal, time_val,
+                                    title=f"时间 {time_val:.6f} s 处的位置切片"
+                                )
+                                st.plotly_chart(fig_time, use_container_width=True)
+                            else:
+                                st.warning("无法获取时间切片数据")
+        
+        # 数据导出
+        st.markdown("---")
+        st.header("💾 数据导出")
+        
+        if st.button("📄 导出B扫描数据为MAT文件", use_container_width=True):
+            output_path = "/tmp/bscan_data.mat"
+            if processor.save_to_mat(output_path):
+                with open(output_path, "rb") as file:
+                    st.download_button(
+                        label="📥 下载MAT文件",
+                        data=file.read(),
+                        file_name="bscan_data.mat",
+                        mime="application/octet-stream",
+                        use_container_width=True
+                    )
+            else:
+                st.error("❌ MAT文件导出失败")
+    
     else:
-        # 显示使用说明
-        st.info("""
-        ### 使用说明
-        1. 在侧边栏选择数据来源（文件夹或MAT文件）
-        2. 设置滤波器参数和B扫描图像设置
-        3. 选择可视化方式
-        4. 点击"处理B扫描数据"按钮进行处理和可视化
+        # 如果没有加载数据，显示欢迎信息
+        st.info("👋 欢迎使用B扫描信号处理模块！请在左侧加载数据文件夹或上传MAT文件开始使用。")
         
-        ### 支持的数据格式
-        - **文件夹**: 包含多个TXT格式信号文件的文件夹，每个文件代表一个位置的信号
-        - **MAT文件**: 包含B扫描数据的MATLAB数据文件
-        """)
+        # 显示支持的功能
+        st.subheader("🌟 支持的功能")
         
-        # 显示示例
-        st.subheader("示例")
+        col1, col2 = st.columns(2)
         
-        # 创建示例B扫描数据
-        num_positions = 50
-        num_samples = 1000
-        t = np.linspace(0, 0.1, num_samples)
-        positions = np.linspace(0, 100, num_positions)
+        with col1:
+            st.markdown("""
+            **数据处理：**
+            - 批量加载TXT信号文件
+            - 从MAT文件加载B扫描数据
+            - 多种滤波器批量应用
+            - 信号归一化处理
+            """)
         
-        # 创建一个简单的B扫描图像
-        bscan_image = np.zeros((num_positions, num_samples))
-        for i, pos in enumerate(positions):
-            # 创建一个随位置变化的信号
-            delay = 0.02 + 0.03 * np.sin(pos / 10)
-            signal = np.exp(-((t - delay) ** 2) / (2 * 0.005 ** 2)) * np.sin(2 * np.pi * 100 * (t - delay))
-            bscan_image[i, :] = signal
-        
-        # 添加一些噪声
-        bscan_image += 0.1 * np.random.randn(*bscan_image.shape)
-        
-        # 显示示例B扫描图像
-        fig, ax = plt.subplots(figsize=(10, 6))
-        im = ax.imshow(bscan_image, aspect='auto', extent=[0, t[-1], positions[-1], positions[0]], cmap='viridis')
-        plt.colorbar(im, ax=ax, label='幅值')
-        ax.set_title("示例B扫描图像")
-        ax.set_xlabel("时间 (s)")
-        ax.set_ylabel("位置")
-        st.pyplot(fig)
-        
-        st.write("""
-        上面显示的是一个示例B扫描图像，横轴表示时间，纵轴表示位置。
-        图像中的亮度表示信号的幅值，可以看到一个随位置变化的波形。
-        请提供您自己的B扫描数据以开始处理。
-        """)
+        with col2:
+            st.markdown("""
+            **可视化功能：**
+            - B扫描图像显示
+            - 3D B扫描可视化
+            - 瀑布图展示
+            - 位置/时间切片分析
+            - 数据导出功能
+            """)
 
 if __name__ == "__main__":
-    app()
+    module_b_page()

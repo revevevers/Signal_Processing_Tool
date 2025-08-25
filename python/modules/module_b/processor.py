@@ -64,7 +64,7 @@ class BScanProcessor:
             
             # 加载每个文件
             for file_path in sorted(txt_files):
-                signal_data, sampling_rate = self.file_utils.read_txt_signal(file_path)
+                time_data, signal_data, sampling_rate = self.file_utils.read_txt_signal(file_path)
                 
                 if signal_data is not None and sampling_rate is not None:
                     # 保存信号数据和采样率
@@ -75,8 +75,8 @@ class BScanProcessor:
                     # 设置采样率（假设所有文件的采样率相同）
                     if self.sampling_rate is None:
                         self.sampling_rate = sampling_rate
-                        # 创建时间轴
-                        self.time_axis = np.arange(len(signal_data)) / self.sampling_rate
+                        # 使用从文件中读取的时间轴
+                        self.time_axis = time_data
                     
                     # 尝试从文件名中提取位置信息
                     file_name = os.path.basename(file_path)
@@ -319,6 +319,29 @@ class BScanProcessor:
             print(f"保存到MAT文件 {output_path} 时出错: {str(e)}")
             return False
     
+    def save_bscan_data(self, output_path: str) -> bool:
+        """
+        保存B扫描数据为MAT文件，包含data_xyt和data_time变量
+        
+        Args:
+            output_path: 输出文件路径
+            
+        Returns:
+            bool: 是否成功保存
+        """
+        if self.bscan_data is None or self.time_axis is None:
+            print("没有可用的B扫描数据可保存")
+            return False
+        
+        try:
+            # 使用专用方法保存B扫描数据
+            self.file_utils.save_bscan_to_mat(output_path, self.bscan_data, self.time_axis)
+            print(f"B扫描数据已成功保存到 {output_path}")
+            return True
+        except Exception as e:
+            print(f"保存B扫描数据到MAT文件 {output_path} 时出错: {str(e)}")
+            return False
+    
     def load_from_mat(self, file_path: str) -> bool:
         """
         从MAT文件加载B扫描数据
@@ -331,29 +354,54 @@ class BScanProcessor:
         """
         try:
             # 使用FileUtils加载MAT文件
-            data_dict = self.file_utils.load_from_mat(file_path)
+            data_dict = self.file_utils.read_mat_file(file_path)
             
-            if data_dict is not None and 'bscan_data' in data_dict:
-                self.bscan_data = data_dict['bscan_data']
+            if data_dict is not None:
+                # 处理不同的MAT文件格式
+                if 'bscan_data' in data_dict:
+                    # 格式1：包含bscan_data
+                    self.bscan_data = data_dict['bscan_data']
+                elif 'signals' in data_dict:
+                    # 格式2：包含signals（需要转换为bscan_data）
+                    signals = data_dict['signals']
+                    if len(signals.shape) == 2:
+                        self.bscan_data = signals
+                    else:
+                        print("信号数据格式不正确")
+                        return False
+                else:
+                    print(f"MAT文件 {file_path} 中缺少信号数据字段")
+                    return False
                 
                 # 加载其他数据（如果存在）
                 if 'time' in data_dict:
                     self.time_axis = data_dict['time']
+                elif self.bscan_data is not None:
+                    # 如果没有时间轴，根据采样率创建
+                    if 'fs' in data_dict:
+                        self.sampling_rate = float(data_dict['fs'])
+                        self.time_axis = np.arange(self.bscan_data.shape[1]) / self.sampling_rate
                 
                 if 'positions' in data_dict:
-                    self.positions = data_dict['positions'].tolist()
+                    positions_data = data_dict['positions']
+                    if positions_data.ndim == 2 and positions_data.shape[0] == 1:
+                        # 处理MATLAB的1xN格式
+                        self.positions = positions_data.flatten().tolist()
+                    else:
+                        self.positions = positions_data.tolist()
                 
                 if 'fs' in data_dict:
-                    self.sampling_rate = data_dict['fs']
+                    fs_data = data_dict['fs']
+                    if hasattr(fs_data, 'item'):
+                        self.sampling_rate = float(fs_data.item())
+                    else:
+                        self.sampling_rate = float(fs_data)
                 
                 if 'signals' in data_dict:
-                    self.processed_signals = [signal for signal in data_dict['signals']]
-                
-                if 'original_signals' in data_dict:
-                    self.signals = [signal for signal in data_dict['original_signals']]
-                else:
-                    # 如果没有原始信号，则使用处理后的信号作为原始信号
-                    self.signals = [signal.copy() for signal in self.processed_signals]
+                    signals_data = data_dict['signals']
+                    if signals_data.ndim == 2:
+                        self.processed_signals = [signals_data[i] for i in range(signals_data.shape[0])]
+                        self.signals = [signal.copy() for signal in self.processed_signals]
                 
                 print(f"B扫描数据已成功从 {file_path} 加载")
                 return True
